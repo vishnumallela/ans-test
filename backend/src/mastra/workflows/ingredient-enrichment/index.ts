@@ -1,77 +1,23 @@
-import { Mastra } from '@mastra/core/mastra';
-import { createStep, createWorkflow } from '@mastra/core/workflows';
-import { QdrantClient } from '@qdrant/qdrant-js';
-import { openai } from '@ai-sdk/openai';
-import { embedMany, generateObject } from 'ai';
-import { z } from 'zod';
+/**
+ * Ingredient Enrichment Workflow
+ * 
+ * parse-input → query-dsld → classify → enrich
+ * 
+ * Note: Web search steps (research, find-structures) removed to reduce costs.
+ * References come only from DSLD factsheets.
+ */
 
-"use strict";
-const vectorSearchInputSchema = z.array(
-  z.object({
-    name: z.string()
-  })
-);
-const vectorSearchOutputSchema = z.array(
-  z.object({
-    name: z.string(),
-    top_matches: z.array(
-      z.object({
-        name: z.string(),
-        similarity: z.number(),
-        id: z.string(),
-        metadata: z.record(z.string(), z.unknown()).optional()
-      })
-    )
-  })
-);
+import { createWorkflow, createStep } from "@mastra/core/workflows";
+import { z } from "zod";
+import { openai } from "@ai-sdk/openai";
+import { generateObject } from "ai";
 
-"use strict";
-const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME ?? "ingredients";
-const qdrantClient = new QdrantClient({
-  url: process.env.QDRANT_URL,
-  apiKey: process.env.QDRANT_API_KEY
-});
-const vectorSearchStep = createStep({
-  id: "vector-search",
-  inputSchema: vectorSearchInputSchema,
-  outputSchema: vectorSearchOutputSchema,
-  execute: async ({ inputData }) => {
-    const texts = inputData.map((input) => input.name);
-    const { embeddings } = await embedMany({
-      model: openai.embedding("text-embedding-3-large"),
-      values: texts
-    });
-    const searches = embeddings.map((vector, index) => ({
-      vector,
-      limit: 3,
-      with_payload: true
-    }));
-    const batchResults = await qdrantClient.searchBatch(COLLECTION_NAME, {
-      searches
-    });
-    return inputData.map((input, index) => ({
-      name: input.name,
-      top_matches: (batchResults[index] ?? []).map((result) => ({
-        name: String(result.payload?.name ?? ""),
-        similarity: result.score ?? 0,
-        id: String(result.id),
-        metadata: result.payload ?? void 0
-      }))
-    }));
-  }
-});
-const vectorSearchWorkflow = createWorkflow({
-  id: "ingredient-vector-search",
-  description: "Search for similar ingredients using vector similarity matching",
-  inputSchema: vectorSearchInputSchema,
-  outputSchema: vectorSearchOutputSchema
-}).then(vectorSearchStep).commit();
-
-"use strict";
 const MODEL = openai("gpt-4o");
 const DSLD_API_BASE = "https://api.ods.od.nih.gov/dsld/v9";
 const MAX_SYNONYMS = 10;
+
 const IngredientType = z.enum(["active", "excipient"]);
+
 const CategoryType = z.enum([
   "vitamin",
   "mineral",
@@ -89,24 +35,28 @@ const CategoryType = z.enum([
   "flavoring",
   "colorant",
   "solvent",
-  "other"
+  "other",
 ]);
+
 const InputSchema = z.object({
   itemCode: z.string(),
-  rawInput: z.string()
+  rawInput: z.string(),
 });
+
 const ParsedSchema = z.object({
   itemCode: z.string(),
   rawInput: z.string(),
-  baseName: z.string()
+  baseName: z.string(),
 });
+
 const DsldDataSchema = z.object({
   itemCode: z.string(),
   rawInput: z.string(),
   baseName: z.string(),
   dsldSummary: z.string(),
-  references: z.array(z.string())
+  references: z.array(z.string()),
 });
+
 const ClassifiedSchema = z.object({
   itemCode: z.string(),
   rawInput: z.string(),
@@ -116,13 +66,15 @@ const ClassifiedSchema = z.object({
   standardName: z.string(),
   ingredientType: IngredientType,
   category: CategoryType,
-  subCategory: z.string().nullable()
+  subCategory: z.string().nullable(),
 });
+
 const ComponentSchema = z.object({
   name: z.string(),
   value: z.number(),
-  unit: z.string()
+  unit: z.string(),
 });
+
 const OutputSchema = z.object({
   itemCode: z.string(),
   rawInput: z.string(),
@@ -135,8 +87,9 @@ const OutputSchema = z.object({
   components: z.array(ComponentSchema).nullable(),
   description: z.string(),
   references: z.array(z.string()),
-  embeddingText: z.string()
+  embeddingText: z.string(),
 });
+
 const parseInputStep = createStep({
   id: "parse-input",
   inputSchema: InputSchema,
@@ -144,6 +97,7 @@ const parseInputStep = createStep({
   execute: async ({ inputData }) => {
     const { itemCode, rawInput } = inputData;
     const normalizedInput = rawInput.trim();
+
     const { object } = await generateObject({
       model: MODEL,
       schema: z.object({ baseName: z.string() }),
@@ -157,13 +111,15 @@ Rules:
 - Keep only the core ingredient identity
 
 Examples:
-  "Vitamin K2 as MK-7 (10000 ppm), 1%" \u2192 "Vitamin K2"
-  "Omega-3 Fatty Acids 300/200EE" \u2192 "Omega-3 Fatty Acids"
-  "Rhodiola rosea root extract std. 3% rosavins" \u2192 "Rhodiola rosea"`
+  "Vitamin K2 as MK-7 (10000 ppm), 1%" → "Vitamin K2"
+  "Omega-3 Fatty Acids 300/200EE" → "Omega-3 Fatty Acids"
+  "Rhodiola rosea root extract std. 3% rosavins" → "Rhodiola rosea"`,
     });
+
     return { itemCode, rawInput: normalizedInput, baseName: object.baseName };
-  }
+  },
 });
+
 const queryDsldStep = createStep({
   id: "query-dsld",
   inputSchema: ParsedSchema,
@@ -171,38 +127,52 @@ const queryDsldStep = createStep({
   execute: async ({ inputData }) => {
     const { itemCode, rawInput, baseName } = inputData;
     let dsldSummary = "No data available in DSLD.";
-    let references = [];
+    let references: string[] = [];
+
     try {
       const endpoint = `${DSLD_API_BASE}/ingredient-groups?method=by_keyword&term=${encodeURIComponent(baseName)}&size=1`;
       const response = await fetch(endpoint);
+
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as {
+          hits?: Array<{
+            _source?: {
+              groupName?: string;
+              category?: string[];
+              synonyms?: string[];
+              factsheets?: Array<{ link?: string }>;
+            };
+          }>;
+        };
+
         const record = data.hits?.[0]?._source;
         if (record) {
-          dsldSummary = `DSLD Group: ${record.groupName ?? "Unknown"}
-Category: ${record.category?.[0] ?? "Uncategorized"}
-Known Synonyms: ${record.synonyms?.slice(0, 5).join(", ") ?? "None"}`;
-          references = (record.factsheets ?? []).map((sheet) => sheet.link).filter((url) => typeof url === "string" && url.startsWith("http"));
+          dsldSummary = `DSLD Group: ${record.groupName ?? "Unknown"}\nCategory: ${record.category?.[0] ?? "Uncategorized"}\nKnown Synonyms: ${record.synonyms?.slice(0, 5).join(", ") ?? "None"}`;
+          references = (record.factsheets ?? [])
+            .map((sheet) => sheet.link)
+            .filter((url): url is string => typeof url === "string" && url.startsWith("http"));
         }
       }
-    } catch {
-    }
+    } catch {}
+
     return { itemCode, rawInput, baseName, dsldSummary, references };
-  }
+  },
 });
+
 const classifyStep = createStep({
   id: "classify",
   inputSchema: DsldDataSchema,
   outputSchema: ClassifiedSchema,
   execute: async ({ inputData }) => {
     const { itemCode, rawInput, baseName, dsldSummary, references } = inputData;
+
     const { object } = await generateObject({
       model: MODEL,
       schema: z.object({
         standardName: z.string(),
         ingredientType: IngredientType,
         category: CategoryType,
-        subCategory: z.string().nullable()
+        subCategory: z.string().nullable(),
       }),
       prompt: `Classify this dietary supplement ingredient.
 
@@ -215,17 +185,20 @@ Provide:
 1. STANDARD NAME - Official USP/INCI nomenclature
 2. INGREDIENT TYPE - "active" (therapeutic/nutritional) or "excipient" (inactive/processing)
 3. CATEGORY - vitamin, mineral, amino_acid, botanical, enzyme, fatty_acid, probiotic, protein, fiber, emulsifier, preservative, binder, filler, flavoring, colorant, solvent, other
-4. SUBCATEGORY - specific sub-classification or null`
+4. SUBCATEGORY - specific sub-classification or null`,
     });
+
     return { itemCode, rawInput, baseName, dsldSummary, references, ...object };
-  }
+  },
 });
+
 const enrichStep = createStep({
   id: "enrich",
   inputSchema: ClassifiedSchema,
   outputSchema: OutputSchema,
   execute: async ({ inputData }) => {
     const { itemCode, rawInput, standardName, ingredientType, category, subCategory, dsldSummary, references } = inputData;
+
     const { object } = await generateObject({
       model: MODEL,
       schema: z.object({
@@ -233,7 +206,7 @@ const enrichStep = createStep({
         chemicalForm: z.string().nullable(),
         plantPart: z.string().nullable(),
         components: z.array(ComponentSchema).nullable(),
-        description: z.string()
+        description: z.string(),
       }),
       prompt: `Generate enrichment data for this ingredient.
 
@@ -249,28 +222,44 @@ Provide:
 1. SYNONYMS (up to ${MAX_SYNONYMS}) - Scientific names, INCI, CAS numbers, common names. NO brand names.
 2. CHEMICAL FORM - Specific form from input (MK-7, HCl, Citrate, Extract) or null
 3. PLANT PART - For botanicals only (root, leaf, seed) or null
-4. COMPONENTS - Parse numeric values: "Omega 3 300/200EE" \u2192 [{name:"EPA",value:300,unit:"mg"},{name:"DHA",value:200,unit:"mg"}] or null
-5. DESCRIPTION - Definition, benefits, uses, quality markers, regulatory status`
+4. COMPONENTS - Parse numeric values: "Omega 3 300/200EE" → [{name:"EPA",value:300,unit:"mg"},{name:"DHA",value:200,unit:"mg"}] or null
+5. DESCRIPTION - Definition, benefits, uses, quality markers, regulatory status`,
     });
+
     const classification = `${ingredientType}|${category}`;
+    
+    // Build comprehensive embedding text for robust vector matching
+    // Handles: full names, constituents, chemical forms, synonyms
     const embeddingParts = [standardName];
+    
+    // Add synonyms for alternate name matching
     if (object.synonyms.length) {
       embeddingParts.push(object.synonyms.slice(0, 5).join(", "));
     }
+    
+    // Add chemical form (MK-7, HCl, Citrate, etc.)
     if (object.chemicalForm) {
       embeddingParts.push(object.chemicalForm);
     }
+    
+    // Add category context
     embeddingParts.push(category);
     if (subCategory) {
       embeddingParts.push(subCategory);
     }
+    
+    // Add plant part for botanicals
     if (object.plantPart) {
       embeddingParts.push(object.plantPart);
     }
+    
+    // Add constituents/components for assay matching
+    // Critical for: "EPA", "DHA", "rosavins", "ginsenosides", etc.
     if (object.components?.length) {
       const componentNames = object.components.map((c) => c.name);
       embeddingParts.push(componentNames.join(", "));
     }
+
     return {
       itemCode,
       rawInput,
@@ -283,22 +272,18 @@ Provide:
       components: object.components,
       description: object.description,
       references,
-      embeddingText: embeddingParts.join(" | ")
+      embeddingText: embeddingParts.join(" | "),
     };
-  }
+  },
 });
-const ingredientEnrichmentWorkflow = createWorkflow({
+
+export const ingredientEnrichmentWorkflow = createWorkflow({
   id: "ingredient-enrichment",
   inputSchema: InputSchema,
-  outputSchema: OutputSchema
-}).then(parseInputStep).then(queryDsldStep).then(classifyStep).then(enrichStep).commit();
-
-"use strict";
-const mastra = new Mastra({
-  workflows: {
-    vectorSearchWorkflow,
-    ingredientEnrichmentWorkflow
-  }
-});
-
-export { mastra };
+  outputSchema: OutputSchema,
+})
+  .then(parseInputStep)
+  .then(queryDsldStep)
+  .then(classifyStep)
+  .then(enrichStep)
+  .commit();

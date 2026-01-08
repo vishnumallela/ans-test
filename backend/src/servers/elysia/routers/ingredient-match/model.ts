@@ -1,6 +1,6 @@
 import { t } from "elysia";
 
-export const ImageExtractBody = t.Object({
+export const IngredientMatchBody = t.Object({
   file: t.File(),
 });
 
@@ -36,7 +36,7 @@ const ActiveIngredientSchema = t.Object({
   confidence: ConfidenceSchema,
 });
 
-const inActiveIngredientSchema = t.Object({
+const InactiveIngredientSchema = t.Object({
   name: t.String(),
   category: t.Union([
     t.Literal("filler"),
@@ -64,17 +64,32 @@ const SupplementFactsSchema = t.Object({
     t.Literal("other"),
   ]),
   active_ingredients: t.Array(ActiveIngredientSchema),
-  inactive_ingredients: t.Optional(t.Array(inActiveIngredientSchema)),
+  inactive_ingredients: t.Optional(t.Array(InactiveIngredientSchema)),
   notes: t.String(),
 });
 
-export const ImageExtractResponse = t.Object({
-  success: t.Literal(true),
-  imageUrl: t.String(),
-  data: SupplementFactsSchema,
+const MatchSchema = t.Object({
+  name: t.String(),
+  similarity: t.Number(),
+  id: t.String(),
+  metadata: t.Optional(t.Record(t.String(), t.Unknown())),
 });
 
-export const ImageExtractErrorResponse = t.Object({
+const IngredientMatchResultSchema = t.Object({
+  name: t.String(),
+  type: t.Union([t.Literal("active"), t.Literal("inactive")]),
+  top_matches: t.Array(MatchSchema),
+});
+
+export const IngredientMatchResponse = t.Object({
+  success: t.Literal(true),
+  imageUrl: t.String(),
+  extraction: SupplementFactsSchema,
+  matches: t.Array(IngredientMatchResultSchema),
+});
+
+export const IngredientMatchErrorResponse = t.Object({
   success: t.Literal(false),
   error: t.String(),
 });
+

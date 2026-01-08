@@ -23,9 +23,9 @@ export const vectorSearchStep = createStep({
       values: texts,
     });
 
-    const searches = embeddings.map((vector) => ({
+    const searches = embeddings.map((vector, index) => ({
       vector,
-      limit: 5,
+      limit: 3,
       with_payload: true,
     }));
 
@@ -47,7 +47,8 @@ export const vectorSearchStep = createStep({
 
 export const vectorSearchWorkflow = createWorkflow({
   id: "ingredient-vector-search",
-  description: "Search for similar ingredients using vector similarity matching",
+  description:
+    "Search for similar ingredients using vector similarity matching",
   inputSchema: vectorSearchInputSchema,
   outputSchema: vectorSearchOutputSchema,
 })

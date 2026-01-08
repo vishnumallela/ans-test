@@ -20,13 +20,16 @@
     "@mastra/core": "latest",
     "@mastra/mcp": "latest",
     "@qdrant/qdrant-js": "^1.16.2",
+    "@types/papaparse": "^5.5.2",
     "ai": "^5.0.115",
     "amazon-textract-response-parser": "^0.4.3",
     "elysia": "^1.4.21",
+    "papaparse": "^5.5.3",
     "zod": "^4"
   },
   "scripts": {
     "start": "bun run index.ts",
-    "dev": "mastra dev"
+    "dev": "mastra dev",
+    "ingest": "bun --env-file=.env run scripts/ingest-ingredients.ts"
   }
 }

@@ -70,7 +70,7 @@ const SupplementFactsSchema = z.object({
       category: z.enum(["vitamin", "mineral", "amino_acid", "herb", "enzyme", "other"]),
       amount_per_serving: z.number(),
       unit: z.enum(["mg", "g", "mcg", "IU", "mcg RAE", "% DV", "µg", "kcal", "mg NE"]),
-      daily_value_percentage: z.number().optional(),
+      daily_value_percentage: z.number().nullish(),
       sources: z.array(z.object({ form: z.string(), percentage: z.number() })).optional(),
       confidence: z.object({ textract: z.number().optional(), openai: z.number().optional() }),
     })
