@@ -1,0 +1,42 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.0.3",
+    "mastra": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.18",
+    "@aws-sdk/client-s3": "^3.955.0",
+    "@aws-sdk/client-textract": "^3.955.0",
+    "@aws-sdk/s3-request-presigner": "^3.955.0",
+    "@elysiajs/cors": "^1.4.1",
+    "@elysiajs/openapi": "^1.4.13",
+    "@grotto/logysia": "^0.1.6",
+    "@mastra/core": "latest",
+    "@mastra/mcp": "latest",
+    "@openrouter/ai-sdk-provider": "^2.0.0",
+    "@qdrant/qdrant-js": "^1.16.2",
+    "@techstark/opencv-js": "^4.12.0-release.1",
+    "@toon-format/toon": "^2.1.0",
+    "@types/papaparse": "^5.5.2",
+    "ai": "^6.0.42",
+    "amazon-textract-response-parser": "^0.4.3",
+    "elysia": "^1.4.21",
+    "papaparse": "^5.5.3",
+    "sharp": "^0.34.5",
+    "zod": "^4"
+  },
+  "scripts": {
+    "start": "bun run dist/index.js",
+    "dev": "bun run index.ts & mastra dev",
+    "ingest": "cd /Users/vishnumallela/Desktop/ans/backend && bun --env-file=.env run src/scripts/injest.ts",
+    "build": "bun build index.ts --outdir dist --target bun --minify"
+  }
+}
