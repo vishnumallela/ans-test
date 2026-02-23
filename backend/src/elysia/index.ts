@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
+import * as z from "zod";
 import { imageExtractRouter } from "./routers/image-extract";
 import { searchSimilarRouter } from "./routers/search-similar";
 import { errorHandler } from "./plugins/error-handler";
@@ -9,6 +10,38 @@ import { logger } from "@grotto/logysia";
 const app = new Elysia({
   serve: { idleTimeout: 255 },
 })
+  .mapResponse(({ responseValue, set, request }) => {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/openapi")) {
+      return responseValue as Response;
+    }
+
+    if (responseValue && !(responseValue instanceof Response)) {
+      const cacheSymbol = Symbol.for("cache");
+      if (
+        typeof responseValue === "object" &&
+        responseValue !== null &&
+        cacheSymbol in responseValue
+      ) {
+        const cached = (
+          responseValue as Record<
+            symbol,
+            [number, unknown, Record<string, string>?]
+          >
+        )[cacheSymbol];
+        if (cached && cached[1] !== null) {
+          return new Response(cached[1] as any, {
+            status: cached[0],
+            headers: cached[2],
+          });
+        }
+      }
+      return Response.json(responseValue, {
+        status: (set.status as number) || 200,
+      });
+    }
+    return responseValue as Response;
+  })
   .use(
     logger({
       logIP: false,
@@ -30,6 +63,9 @@ const app = new Elysia({
   .use(
     openapi({
       provider: "swagger-ui",
+      mapJsonSchema: {
+        zod: z.toJSONSchema,
+      },
       documentation: {
         info: {
           title: "ANS API",
