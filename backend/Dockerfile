@@ -28,5 +28,5 @@ COPY --from=prerelease /usr/src/app/package.json .
 COPY --from=prerelease /usr/src/app/dist ./dist
 
 USER bun
-EXPOSE 3000/tcp
+EXPOSE 3001/tcp 3002/tcp
 ENTRYPOINT [ "bun", "run", "start" ]
